@@ -94,6 +94,7 @@ class TrainLoop:
         self._load_and_sync_parameters()
 
         self.opt = AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer = self.opt, gamma = 0.99)
         if self.resume_step:
             print("Resume Step: " + str(self.resume_step))
             self._load_optimizer_state()
@@ -103,9 +104,11 @@ class TrainLoop:
                 "Training requires CUDA. "
             )
 
+
     def _load_and_sync_parameters(self):
         resume_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
 
+        resume_checkpoint = False
         if resume_checkpoint:
             print('resume model ...')
             self.resume_step = parse_resume_step_from_filename(resume_checkpoint)
@@ -140,7 +143,7 @@ class TrainLoop:
         while not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps:
             t_total = time.time() - t
             t = time.time()
-            if self.dataset in ['brats', 'lidc-idri']:
+            if self.dataset in ['brats', 'lidc-idri', 'metabreast']:
                 try:
                     batch = next(self.iterdatal)
                     cond = {}
@@ -149,34 +152,57 @@ class TrainLoop:
                     batch = next(self.iterdatal)
                     cond = {}
 
+            #print(batch.shape)
             batch = batch.to(dist_util.dev())
+            #print(f"Batch      {batch[0].shape}")
 
             t_fwd = time.time()
             t_load = t_fwd-t
 
-            lossmse, sample, sample_idwt = self.run_step(batch, cond)
+            #print(batch.dtype)
+            #print(batch.device)
+            lossmse, fake_wav, sample_idwt, sample_wav = self.run_step(batch, cond)
 
             t_fwd = time.time()-t_fwd
 
             names = ["LLL", "LLH", "LHL", "LHH", "HLL", "HLH", "HHL", "HHH"]
 
             if self.summary_writer is not None:
+                self.summary_writer.add_scalar('loss/Learning Rate', self.lr_scheduler.get_last_lr()[0], global_step=self.step + self.resume_step)
                 self.summary_writer.add_scalar('time/load', t_load, global_step=self.step + self.resume_step)
                 self.summary_writer.add_scalar('time/forward', t_fwd, global_step=self.step + self.resume_step)
                 self.summary_writer.add_scalar('time/total', t_total, global_step=self.step + self.resume_step)
                 self.summary_writer.add_scalar('loss/MSE', lossmse.item(), global_step=self.step + self.resume_step)
 
-            if self.step % 200 == 0:
+            if self.step % 5000 == 0:
                 image_size = sample_idwt.size()[2]
+                #print(f"IDWT {sample_idwt.shape}")
+                #print(f"DWT {sample.shape}")
                 midplane = sample_idwt[0, 0, :, :, image_size // 2]
-                self.summary_writer.add_image('sample/x_0', midplane.unsqueeze(0),
+                #print(f"Midplane {midplane.shape}")
+                self.summary_writer.add_image('sample/real', batch[0, :, 15, :, :].cpu(),
                                               global_step=self.step + self.resume_step)
-
+                #self.summary_writer.add_image('sample/wavelet', sample[0, :, 15, :, :],
+                #                              global_step=self.step + self.resume_step)
+                self.summary_writer.add_image('sample/fake', sample_idwt[0, :, 15, :, :],
+                                              global_step=self.step + self.resume_step)
+                #self.summary_writer.add_image('sample/x_0', midplane.unsqueeze(0),
+                #                              global_step=self.step + self.resume_step)
+                
+                """
+                print(sample_wav.shape)
+                for ch in range(8):
+                    self.summary_writer.add_image('sample/real_wav_names[ch]', sample_wav[0, ch, 15, :, :].cpu(),
+                                                global_step=self.step + self.resume_step)
+                    self.summary_writer.add_image('sample/fake_wav_names[ch]', fake_wav[0, ch, 15, :, :].cpu(),
+                                                global_step=self.step + self.resume_step)
+                
                 image_size = sample.size()[2]
                 for ch in range(8):
                     midplane = sample[0, ch, :, :, image_size // 2]
                     self.summary_writer.add_image('sample/{}'.format(names[ch]), midplane.unsqueeze(0),
                                                   global_step=self.step + self.resume_step)
+                """
 
             if self.step % self.log_interval == 0:
                 logger.dumpkvs()
@@ -193,7 +219,8 @@ class TrainLoop:
             self.save()
 
     def run_step(self, batch, cond, label=None, info=dict()):
-        lossmse, sample, sample_idwt = self.forward_backward(batch, cond, label)
+        #batch = batch.to(th.device("cpu"))
+        lossmse, sample, sample_wav, sample_idwt = self.forward_backward(batch, cond, label)
 
         if self.use_fp16:
             self.grad_scaler.unscale_(self.opt)  # check self.grad_scaler._per_optimizer_states
@@ -222,7 +249,7 @@ class TrainLoop:
             self.opt.step()
         self._anneal_lr()
         self.log_step()
-        return lossmse, sample, sample_idwt
+        return lossmse, sample, sample_idwt, sample_wav
 
     def forward_backward(self, batch, cond, label=None):
         for p in self.model.parameters():  # Zero out gradient
@@ -259,8 +286,16 @@ class TrainLoop:
             losses = losses1[0]         # Loss value
             sample = losses1[1]         # Denoised subbands at t=0
             sample_idwt = losses1[2]    # Inverse wavelet transformed denoised subbands at t=0
+            sample_wav = losses1[3]
+            #print(sample_idwt.shape)
 
             # Log wavelet level loss
+            self.summary_writer.add_scalar('loss/ssim', losses["ssim"].item(),
+                                           global_step=self.step + self.resume_step)
+            self.summary_writer.add_scalar('loss/ms_ssim', losses["ms_ssim"].item(),
+                                           global_step=self.step + self.resume_step)
+            self.summary_writer.add_scalar('loss/mse_idwt', losses["mse"].item(),
+                                           global_step=self.step + self.resume_step)
             self.summary_writer.add_scalar('loss/mse_wav_lll', losses["mse_wav"][0].item(),
                                            global_step=self.step + self.resume_step)
             self.summary_writer.add_scalar('loss/mse_wav_llh', losses["mse_wav"][1].item(),
@@ -278,10 +313,12 @@ class TrainLoop:
             self.summary_writer.add_scalar('loss/mse_wav_hhh', losses["mse_wav"][7].item(),
                                            global_step=self.step + self.resume_step)
 
-            weights = th.ones(len(losses["mse_wav"])).cuda()  # Equally weight all wavelet channel losses
+            #weights = th.ones(len(losses["mse_wav"])).cuda()  # Equally weight all wavelet channel losses
+            weights = torch.Tensor([2., 1., 1., 1., 1., 1., 1., 1.]).cuda()
 
             loss = (losses["mse_wav"] * weights).mean()
             lossmse = loss.detach()
+            #loss_ssim  = torch.autograd.Variable(1 - losses["ssim"], requires_grad=True)
 
             log_loss_dict(self.diffusion, t, {k: v * weights for k, v in losses.items()})
 
@@ -291,9 +328,16 @@ class TrainLoop:
             if self.use_fp16:
                 self.grad_scaler.scale(loss).backward()
             else:
+                #print(f"MSE: {loss}")
+                #print(f"SSIM: {loss_ssim}")
+                #loss_total = loss + loss_ssim
+                #loss_total.backward()
                 loss.backward()
+            
+            if self.step % 5000 == 0:
+                self.lr_scheduler.step()
 
-            return lossmse.detach(), sample, sample_idwt
+            return lossmse.detach(), sample, sample_wav, sample_idwt
 
     def _anneal_lr(self):
         if not self.lr_anneal_steps:
@@ -315,6 +359,8 @@ class TrainLoop:
                     filename = f"brats_{(self.step+self.resume_step):06d}.pt"
                 elif self.dataset == 'lidc-idri':
                     filename = f"lidc-idri_{(self.step+self.resume_step):06d}.pt"
+                elif self.dataset == 'metabreast':
+                    filename = f"metabreast_{(self.step+self.resume_step):06d}.pt"
                 else:
                     raise ValueError(f'dataset {self.dataset} not implemented')
 

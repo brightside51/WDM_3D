@@ -18,14 +18,130 @@ from .nn import mean_flat
 from .losses import normal_kl, discretized_gaussian_log_likelihood
 from scipy import ndimage
 from torchvision import transforms
+import torchmetrics
+#from torchmetrics.image.ssim import SSIM
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-
+#from pytorch_msssim import MS_SSIM
+#from ssim3d_utils import msssim2_1d as MS_SSIM
+#from ms_ssim3d import ms_ssim_3d as MS_SSIM
+#from tfmri.image import ssim3d_multiscale as MS_SSIM
 from DWT_IDWT.DWT_IDWT_layer import DWT_3D, IDWT_3D
 
 dwt = DWT_3D('haar')
 idwt = IDWT_3D('haar')
 
+def gaussian_kernel(size: int, sigma: float):
+    """Creates a 3D Gaussian kernel."""
+    coords = torch.arange(size, dtype=torch.float32)
+    coords -= size // 2
+    g = torch.exp(-(coords**2) / (2 * sigma**2))
+    g /= g.sum()
+    kernel = g[:, None, None] * g[None, :, None] * g[None, None, :]
+    return kernel
+
+def _ssim_3d(img1, img2, kernel, size_average=True):
+    """Calculates the SSIM for 3D images."""
+    C1 = 0.01**2
+    C2 = 0.03**2
+
+    mu1 = F.conv3d(img1, kernel, padding=kernel.size(2)//2, groups=img1.size(1))
+    mu2 = F.conv3d(img2, kernel, padding=kernel.size(2)//2, groups=img2.size(1))
+    mu1_sq = mu1.pow(2)
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv3d(img1 * img1, kernel, padding=kernel.size(2)//2, groups=img1.size(1)) - mu1_sq
+    sigma2_sq = F.conv3d(img2 * img2, kernel, padding=kernel.size(2)//2, groups=img2.size(1)) - mu2_sq
+    sigma12 = F.conv3d(img1 * img2, kernel, padding=kernel.size(2)//2, groups=img1.size(1)) - mu1_mu2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+
+    return ssim_map.mean() if size_average else ssim_map
+
+def MS_SSIM(img1, img2, levels=5, size_average=True):
+    """Calculates the Multi-Scale SSIM for 3D images."""
+    kernel = gaussian_kernel(size=11, sigma=1.5).unsqueeze(0).unsqueeze(0)
+    kernel = kernel.to(img1.device)
+    
+    mssim = []
+    weights = torch.FloatTensor([0.0448, 0.2856, 0.3001, 0.2363, 0.1333]).to(img1.device)
+
+    for _ in range(levels):
+        ssim = _ssim_3d(img1, img2, kernel, size_average)
+        mssim.append(ssim)
+
+        img1 = F.avg_pool3d(img1, kernel_size=2)
+        img2 = F.avg_pool3d(img2, kernel_size=2)
+
+    mssim = torch.stack(mssim)
+    return (mssim * weights).sum() if size_average else mssim
+
+# Example usage
+# Assuming `image1` and `image2` are 3D images with shape (N, C, D, H, W)
+# image1, image2 = ...
+
+
+def create_gaussian_window(window_size, sigma, channels):
+    """
+    Create a 3D Gaussian kernel.
+    Args:
+        window_size (int): Size of the Gaussian kernel (odd number).
+        sigma (float): Standard deviation of the Gaussian.
+        channels (int): Number of input channels.
+    Returns:
+        torch.Tensor: Gaussian kernel for 3D convolution.
+    """
+    coords = torch.arange(window_size, dtype=torch.float32) - window_size // 2
+    grid = torch.stack(torch.meshgrid(coords, coords, coords), dim=-1)
+    kernel = torch.exp(-torch.sum(grid**2, dim=-1) / (2 * sigma**2))
+    kernel = kernel / kernel.sum()  # Normalize kernel
+    kernel = kernel.view(1, 1, window_size, window_size, window_size)
+    return kernel.expand(channels, 1, -1, -1, -1)
+
+def SSIM(img1, img2, window_size=11, sigma=1.5, data_range=1.0):
+    """
+    Compute 3D Structural Similarity Index (SSIM) between two volumes.
+    Args:
+        img1 (torch.Tensor): First input tensor of shape (B, C, D, H, W).
+        img2 (torch.Tensor): Second input tensor of shape (B, C, D, H, W).
+        window_size (int): Size of the Gaussian kernel (odd number).
+        sigma (float): Standard deviation of the Gaussian kernel.
+        data_range (float): Maximum possible value in the data (e.g., 1.0 if normalized).
+    Returns:
+        torch.Tensor: Mean SSIM value over the batch.
+    """
+    assert img1.shape == img2.shape, "Input volumes must have the same shape!"
+    B, C, D, H, W = img1.shape
+    device = img1.device
+
+    # Create Gaussian kernel
+    kernel = create_gaussian_window(window_size, sigma, C).to(device)
+
+    # Compute means
+    mu1 = F.conv3d(img1, kernel, padding=window_size // 2, groups=C)
+    mu2 = F.conv3d(img2, kernel, padding=window_size // 2, groups=C)
+
+    # Compute variances and covariances
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv3d(img1 * img1, kernel, padding=window_size // 2, groups=C) - mu1_sq
+    sigma2_sq = F.conv3d(img2 * img2, kernel, padding=window_size // 2, groups=C) - mu2_sq
+    sigma12 = F.conv3d(img1 * img2, kernel, padding=window_size // 2, groups=C) - mu1_mu2
+
+    # Constants for numerical stability
+    C1 = (0.01 * data_range) ** 2
+    C2 = (0.03 * data_range) ** 2
+
+    # Compute SSIM map
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / (
+        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+    )
+
+    # Return mean SSIM over the batch
+    return ssim_map.mean()
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
@@ -144,6 +260,7 @@ class GaussianDiffusion:
         self.rescale_timesteps = rescale_timesteps
         self.mode = mode
         self.loss_level=loss_level
+        #self.ssim_metric = SSIM(data_range=1.0, kernel_size=(3, 3, 3), reduction='mean')
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -152,6 +269,8 @@ class GaussianDiffusion:
         assert (betas > 0).all() and (betas <= 1).all()
 
         self.num_timesteps = int(betas.shape[0])
+        self.mse_loss = torch.nn.MSELoss()
+        #self.msssim_loss = MS_SSIM(data_range=1., size_average=True, channel=1, win_size = 7)
 
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)                     # t
@@ -202,6 +321,7 @@ class GaussianDiffusion:
         return mean, variance, log_variance
 
     def q_sample(self, x_start, t, noise=None):
+
         """
         Diffuse the data for a given number of diffusion steps.
 
@@ -323,6 +443,7 @@ class GaussianDiffusion:
 
                 LLL, LLH, LHL, LHH, HLL, HLH, HHL, HHH = dwt(x_idwt_clamp)
                 x = th.cat([LLL / 3., LLH, LHL, LHH, HLL, HLH, HHL, HHH], dim=1)
+                #x = th.cat([LLL, LLH, LHL, LHH, HLL, HLH, HHL, HHH], dim=1)
 
                 return x
             return x
@@ -1063,8 +1184,12 @@ class GaussianDiffusion:
 
         # Wavelet transform the input image
         LLL, LLH, LHL, LHH, HLL, HLH, HHL, HHH = dwt(x_start)
+        #print(f"X Start      {x_start.shape}")
         x_start_dwt = th.cat([LLL / 3., LLH, LHL, LHH, HLL, HLH, HHL, HHH], dim=1)
+        #x_start_dwt = th.cat([LLL, LLH, LHL, LHH, HLL, HLH, HHL, HHH], dim=1)
+        #print(f"X DWT        {x_start_dwt.shape}")
 
+        torch.cuda.synchronize()
         if mode == 'default':
             noise = th.randn_like(x_start)  # Sample noise - original image resolution.
             LLL, LLH, LHL, LHH, HLL, HLH, HHL, HHH = dwt(noise)
@@ -1074,7 +1199,13 @@ class GaussianDiffusion:
         else:
             raise ValueError(f'Invalid mode {mode=}, needs to be "default"')
 
+        # WIP
+        #t = t.to(th.device("cpu"))
+        #x_t = x_t.to(th.device("cpu"))
+        #print(f"X_t          {x_t.shape}")
+        #print(f"TS           {self._scale_timesteps(t)}")
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)  # Model outputs denoised wavelet subbands
+        #print(f"Output       {model_output.shape}")
 
         # Inverse wavelet transform the model output
         B, _, H, W, D = model_output.size()
@@ -1086,10 +1217,24 @@ class GaussianDiffusion:
                                  model_output[:, 5, :, :, :].view(B, 1, H, W, D),
                                  model_output[:, 6, :, :, :].view(B, 1, H, W, D),
                                  model_output[:, 7, :, :, :].view(B, 1, H, W, D))
+        #print(f"Output IDWT  {model_output_idwt.shape}")
 
-        terms = {"mse_wav": th.mean(mean_flat((x_start_dwt - model_output) ** 2), dim=0)}
+        print(f"X_Start {x_start.shape} | {torch.max(x_start)} -> {torch.min(x_start)}")
+        #print(f"X_Start DWT {x_start_dwt.shape}")
+        #print(f"Output DWT {model_output.shape}")
+        #print(f"Output IDWT {model_output_idwt.shape} | {torch.max(model_output_idwt)} -> {torch.min(model_output_idwt)}")
+        model_output_idwt_norm = (model_output_idwt - torch.min(model_output_idwt)) / (torch.max(model_output_idwt) - torch.min(model_output_idwt))
+        print(f"Output IDWT Norm {model_output_idwt_norm.shape} | {torch.max(model_output_idwt_norm)} -> {torch.min(model_output_idwt_norm)}")
 
-        return terms, model_output, model_output_idwt
+        terms = {"mse_wav": th.mean(mean_flat((x_start_dwt - model_output) ** 2), dim=0),
+                #"ssim": SSIM(model_output_idwt.to('cuda'), x_start.to('cuda'))}
+                "mse": self.mse_loss(model_output_idwt, x_start),
+                #"ms_ssim": self.msssim_loss(model_output_idwt_norm, x_start),
+                #"ms_ssim": MS_SSIM(model_output_idwt_norm, x_start, filter_size = 7),
+                "ms_ssim": MS_SSIM(model_output_idwt_norm, x_start),
+                "ssim": SSIM(model_output_idwt_norm, x_start)}
+
+        return terms, model_output, model_output_idwt, x_start_dwt
 
 
     def _prior_bpd(self, x_start):
@@ -1179,6 +1324,9 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
                             dimension equal to the length of timesteps.
     :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
     """
+    print(arr.shape)
+    print(timesteps.shape)
+    print(timesteps)
     res = th.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
     while len(res.shape) < len(broadcast_shape):
         res = res[..., None]

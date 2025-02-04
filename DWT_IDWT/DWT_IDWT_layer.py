@@ -527,8 +527,11 @@ class DWT_3D(Module):
         self.input_height = input.size()[-2]
         self.input_width = input.size()[-1]
         self.get_matrix()
-        return DWTFunction_3D.apply(input, self.matrix_low_0, self.matrix_low_1, self.matrix_low_2,
+        output = DWTFunction_3D.apply(input, self.matrix_low_0, self.matrix_low_1, self.matrix_low_2,
                                     self.matrix_high_0, self.matrix_high_1, self.matrix_high_2)
+        #print("")
+        #for i in range(len(output)): print(f"Wavelet     {output[i].shape}")
+        return output
 
 
 class IDWT_3D(Module):

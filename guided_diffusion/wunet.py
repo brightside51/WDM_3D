@@ -459,7 +459,7 @@ class WavUNetModel(nn.Module):
         # self.num_heads_upsample = num_heads_upsample
         self.num_groups = num_groups
         self.bottleneck_attention = bottleneck_attention
-        self.devices = None
+        self.devices = th.device('cuda:0')
         self.decoder_device_thresh = decoder_device_thresh
         self.additive_skips = additive_skips
         self.use_freq = use_freq
@@ -714,22 +714,22 @@ class WavUNetModel(nn.Module):
             # distribute to multiple devices
             self.devices = args[0]
             # move first half to first device, second half to second device
-            self.input_blocks.to(self.devices[0])
-            self.time_embed.to(self.devices[0])
-            self.middle_block.to(self.devices[0])  # maybe devices 0
+            self.input_blocks.to(self.devices)
+            self.time_embed.to(self.devices)
+            self.middle_block.to(self.devices)  # maybe devices 0
             for k, b in enumerate(self.output_blocks):
                 if k < self.decoder_device_thresh:
-                    b.to(self.devices[0])
+                    b.to(self.devices)
                 else:  # after threshold
-                    b.to(self.devices[1])
-            self.out.to(self.devices[0])
+                    b.to(self.devices)
+            self.out.to(self.devices)
             print(f"distributed UNet components to devices {self.devices}")
 
         else:  # default behaviour
             super().to(*args, **kwargs)
             if self.devices is None:  # if self.devices has not been set yet, read it from params
                 p = next(self.parameters())
-                self.devices = [p.device, p.device]
+                self.devices = th.device('cuda:0' if th.cuda.is_available() else "cpu")
 
     def forward(self, x, timesteps):
         """
@@ -742,6 +742,7 @@ class WavUNetModel(nn.Module):
         """
         hs = []  # Save skip-connections here
         input_pyramid = x
+        timesteps = timesteps.to(self.devices)
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))  # Gen sinusoidal timestep embedding
         h = x
         self.hs_shapes = []

@@ -1,0 +1,112 @@
+{
+  "tabs": [
+    {
+      "name": "V0 (28/11/2024)",
+      "tabGroups": [
+        {
+          "files": [
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/run_V1.sh",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/dist_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/train_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/gaussian_diffusion.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/unet.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V1/error.err",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V1/output.out",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/scripts/generation_train.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/metabreast.py"
+          ],
+          "viewColumn": 1
+        }
+      ],
+      "layout": {
+        "orientation": 0,
+        "groups": [
+          {
+            "size": 976
+          }
+        ]
+      }
+    },
+    {
+      "name": "V0 (3/12/2024)",
+      "tabGroups": [
+        {
+          "files": [
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/dist_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/train_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/gaussian_diffusion.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/unet.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/nn.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/run_V1.sh",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V1/error.err",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V1/output.out",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/scripts/generation_train.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/script_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/metabreast.py"
+          ],
+          "viewColumn": 1
+        }
+      ],
+      "layout": {
+        "orientation": 0,
+        "groups": [
+          {
+            "size": 976
+          }
+        ]
+      }
+    },
+    {
+      "name": "V1 (17/12/2024)",
+      "tabGroups": [
+        {
+          "files": [
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/train_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/unet.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/scripts/generation_train.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/metabreast.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/run_V1.sh",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V1/error.err",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V1/output.out"
+          ],
+          "viewColumn": 1
+        }
+      ],
+      "layout": {
+        "orientation": 0,
+        "groups": [
+          {
+            "size": 1616
+          }
+        ]
+      }
+    },
+    {
+      "name": "V3 (7/1/2025)",
+      "tabGroups": [
+        {
+          "files": [
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/run_V3.sh",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/gaussian_diffusion.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/script_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/scripts/generation_train.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/train_util.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V3/output.out",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/MetaBreast/logs/wdm3d/V3/error.err",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/metabreast.py",
+            "file:///x%3A/nas-ctm01/homes/pfsousa/WDM3D/guided_diffusion/wunet.py"
+          ],
+          "viewColumn": 1
+        }
+      ],
+      "layout": {
+        "orientation": 0,
+        "groups": [
+          {
+            "size": 1702
+          }
+        ]
+      }
+    }
+  ]
+}

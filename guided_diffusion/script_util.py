@@ -15,10 +15,12 @@ def diffusion_defaults():
     """
     return dict(
         learn_sigma=False,
-        diffusion_steps=1000,
-        noise_schedule="linear",
+        diffusion_steps=800,
+        #noise_schedule="linear",
+        noise_schedule="cosine",
         timestep_respacing="",
-        use_kl=False,
+        #use_kl=False,
+        use_kl=True,
         predict_xstart=False,
         rescale_timesteps=False,
         rescale_learned_sigmas=False,
@@ -389,7 +391,7 @@ def sr_model_and_diffusion_defaults():
     res = model_and_diffusion_defaults()
     res["large_size"] = 256
     res["small_size"] = 64
-    arg_names = inspect.getfullargspec(sr_create_model_and_diffusion)[0]
+    arg_names = inspect.getfullargspec()[0]
     for k in res.copy().keys():
         if k not in arg_names:
             del res[k]
@@ -508,14 +510,18 @@ def create_gaussian_diffusion(
     steps=1000,
     learn_sigma=False,
     sigma_small=False,
-    noise_schedule="linear",
-    use_kl=False,
+    noise_schedule="cosine",
+    use_kl=True,
+    #noise_schedule="linear",
+    #use_kl=False,
     predict_xstart=False,
     rescale_timesteps=False,
     rescale_learned_sigmas=False,
     timestep_respacing="",
     mode='default',
 ):
+    
+    #noise_schedule="cosine"; use_kl=True
     betas = gd.get_named_beta_schedule(noise_schedule, steps)
     if use_kl:
         loss_type = gd.LossType.RESCALED_KL

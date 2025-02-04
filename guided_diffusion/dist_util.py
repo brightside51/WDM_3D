@@ -31,7 +31,8 @@ def setup_dist(devices=(0,)):
 
     #comm = MPI.COMM_WORLD
   #  print('commworld, 'f"{MPI.COMM_WORLD.Get_rank() % GPUS_PER_NODE}", comm)
-    backend = "gloo" if not th.cuda.is_available() else "nccl"
+    #backend = "gloo" if not th.cuda.is_available() else "nccl"
+    backend = "gloo"
    # print('commrank', comm.rank)
    # print('commsize', comm.size)
 
